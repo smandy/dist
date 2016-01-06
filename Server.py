@@ -69,7 +69,7 @@ class Echoer(pb.Root):
 
         x.addCallback( beep)
         return (st, self)
-
+    
 # TODO - something like this.
 # https://gist.github.com/ismasan/299789
 
@@ -167,6 +167,17 @@ def index(web):
 @route("/demo")
 def index(web):
     web.write(htm)
+
+from pprint import pprint as pp
+import json
+    
+@route("/jobs/add", method = 'post') 
+def index(web, *args, **kwargs):
+    #print web, args, kwargs
+    #pp(vars(web))
+    pp( json.loads(web.request.body))
+    #pp(vars(web))
+    web.write('Ok')
 
 class WebSocketHandler(cyclone.websocket.WebSocketHandler):
     def __init__(self, *args, **kwargs):
