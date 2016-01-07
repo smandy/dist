@@ -14,6 +14,7 @@ class Client(pb.Root, pb.Referenceable):
         pass
     
 factory = pb.PBClientFactory()
+
 reactor.connectTCP("localhost", 8789, factory)
 
 d = factory.getRootObject()

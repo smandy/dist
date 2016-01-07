@@ -37,7 +37,6 @@ class Echoer(pb.Root):
     def __init__(self):
         self.clients = {}
         self.webSocket = None
-        #reactor.callLater(1000, self.pingClients)
 
     def pingClients(self):
         print "PingClients"
@@ -221,15 +220,12 @@ except Exception, e:
     import sys
     logFile = sys.stdout
 
-#reactor.run()
-
 def getManholeFactory(namespace, passwords):
     realm = manhole_ssh.TerminalRealm()
     def getManhole(_): return manhole.Manhole(namespace)
     realm.chainedProtocolFactory.protocolFactory = getManhole
     p = portal.Portal(realm)
-    p.registerChecker(
-        checkers.InMemoryUsernamePasswordDatabaseDontUse(**passwords))
+    p.registerChecker(checkers.InMemoryUsernamePasswordDatabaseDontUse(**passwords))
     f = manhole_ssh.ConchFactory(p)
     return f
     
@@ -247,8 +243,6 @@ if __name__ == '__main__':
     port = 8888
     interface = '0.0.0.0'
     reactor.listenTCP(port, create_app( **settings ), interface=interface)
-
     
-    #x = pb.getRootObject()
     reactor.callLater(0, e.pingClients)
     reactor.run()
