@@ -1,5 +1,12 @@
+
+import sys
+sys.path.insert(0, '/home/andy/repos/cyclone')
+
 from twisted.conch import manhole, manhole_ssh
 from twisted.cred import portal, checkers
+
+import cyclone
+print cyclone.__file__
 
 import cyclone.escape
 import cyclone.redis
@@ -8,10 +15,10 @@ import cyclone.util
 import cyclone.web
 import cyclone.websocket
 import cyclone.xmlrpc
-from cyclone.bottle import create_app, route
-from twisted.spread import pb
-from twisted.internet import reactor
-
+from   cyclone.bottle import create_app, route
+from   twisted.spread import pb
+from   twisted.internet import reactor
+from   twisted.python import log
 import traceback
 
 class Client:
@@ -38,13 +45,20 @@ class Echoer(pb.Root):
         self.clients = {}
         self.webSockets = []
 
+    def wsSuccess(self, ws):
+        print "Success %s"
+
+    def wsFailed( self, ws):
+        print "WS Failed %s" % ws
+        
     def pingClients(self):
         print "PingClients"
         for q,v in self.clients.items():
             s =  "%s Pinging %s %s %s" % (datetime.now().isoformat(),q,v, str(self.webSockets))
             print s
             for ws in self.webSockets:
-                ws.sendMessage(s)
+                x = ws.sendMessage(s) #.addCallback( self.wsSuccess, ws).addErrback( self.wsFailed, ws)
+                print "Retval is %s" % x
             try:
                 v.ref.callRemote('ping' ,s).addCallback( v.ping).addErrback(v.err)
             except pb.DeadReferenceError:
@@ -70,12 +84,6 @@ class Echoer(pb.Root):
     
 # TODO - something like this.
 # https://gist.github.com/ismasan/299789
-
-htm = open('resources/websock.htm', 'r').read()
-websockjs = open('resources/websock.js', 'r').read()
-
-print "Loaded %s" % htm
-
 class BaseHandler(cyclone.web.RequestHandler):
     @property
     def redisdb(self):
@@ -85,36 +93,22 @@ class BaseHandler(cyclone.web.RequestHandler):
         print "Getting user cookie"
         return self.get_secure_cookie("user")
 
-@route("/")
-def index(web):
-    web.write("Hello, world")
-
-@route("/resources/websock.js")
-def index(web):
-    web.write(websockjs)
-    
-@route("/demo")
-def index(web):
-    print "Returning %s" % htm
-    web.write(htm)
-
-from pprint import pprint as pp
-import json
-    
 @route("/jobs/add", method = 'post') 
-def index(web, *args, **kwargs):
+def addJob(web, *args, **kwargs):
     #print web, args, kwargs
     #pp(vars(web))
     pp( json.loads(web.request.body))
     #pp(vars(web))
     web.write('Ok')
 
-class WebSocketHandler(cyclone.websocket.WebSocketHandler):
-    def __init__(self, *args, **kwargs):
-        cyclone.websocket.WebSocketHandler.__init__(self, *args, **kwargs)
-        print "Created with %s %s" % (args, kwargs)
-        self.connected = False
+from pprint import pprint as pp
+import json
     
+class WebSocketHandler(cyclone.websocket.WebSocketHandler):
+    def initialize(self, server):
+        print "In initialize"
+        self.connected = False
+        
     def connectionMade(self, *args, **kwargs):
         print "connection made:", args, kwargs
         self.connected = True
@@ -158,11 +152,14 @@ if __name__ == '__main__':
     e = Echoer()
     reactor.listenTCP(9011, pb.PBServerFactory(e))
     reactor.listenTCP(8790, getManholeFactory(globals(), passwords = { 'andy' : 'pandy' }))
+    
+    log.startLogging(sys.stdout)
     settings = dict(
+        log = logFile,
         more_handlers=[
-            #(r"/websocket", WebSocketHandler),
-            (r"/websocket"  , webSocket, e),
-            (r"/static/(.*)", StaticFileHandler, { "path", "static" }),
+            (r"/websocket"  , webSocket, { 'server' : e }),
+            (r"/static/(.*)", cyclone.web.StaticFileHandler , { "path" : "static" }),
+            (r"/demo"       , cyclone.web.RedirectHandler  , { "url"  : "static/websock.htm"})
         ] )
     
     port = 8888
