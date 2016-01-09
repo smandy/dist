@@ -11,11 +11,12 @@ class Client(pb.Root, pb.Referenceable):
         self.name = name
         
     def remote_ping(self):
+        print "Ping!"
         pass
     
 factory = pb.PBClientFactory()
 
-reactor.connectTCP("localhost", 8789, factory)
+reactor.connectTCP("localhost", 9011, factory)
 
 d = factory.getRootObject()
 

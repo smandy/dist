@@ -9,7 +9,6 @@ import cyclone.web
 import cyclone.websocket
 import cyclone.xmlrpc
 from cyclone.bottle import create_app, route
-
 from twisted.spread import pb
 from twisted.internet import reactor
 
@@ -25,9 +24,8 @@ class Client:
         pass
         #print "Ping %s" % str(x)
 
-    def err(self, err):
+    def err(self, *args):
         print "Err is ", err
-        #print "Removing client %s" % self.q
         del self.e.clients[self.q]
 
 def dorint(s):
@@ -36,15 +34,14 @@ def dorint(s):
 class Echoer(pb.Root):
     def __init__(self):
         self.clients = {}
-        self.webSocket = None
+        self.webSockets = []
 
     def pingClients(self):
         print "PingClients"
         for q,v in self.clients.items():
             print "Pinging %s %s" % (q,v)
-            if self.webSocket:
-                self.webSocket.sendMessage("Pinging %s %s" % (q,v))
-                
+            for ws in self.webSockets:
+                ws.sendMessage("Pinging %s %s" % (q,v))
             try:
                 v.ref.callRemote('ping').addCallback( v.ping).addErrback(v.err)
             except pb.DeadReferenceError:
@@ -52,7 +49,6 @@ class Echoer(pb.Root):
                 print "Killing %s" % q
                 del self.clients[q]
                 pass
-            
         reactor.callLater(1, self.pingClients)
 
     def remote_register(self, name, client):
@@ -72,83 +68,10 @@ class Echoer(pb.Root):
 # TODO - something like this.
 # https://gist.github.com/ismasan/299789
 
-htm = """<html>
-    <head>
-        <title>Echo Chamber</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width">
-    </head>
-    <body>
-        
-        <div>
-            <input type="text" id="messageinput"/>
-        </div>
-        <div>
-            <button type="button" onclick="openSocket();" >Open</button>
-            <button type="button" onclick="send();" >Send</button>
-            <button type="button" onclick="closeSocket();" >Close</button>
-        </div>
-        <!-- Server responses get written here -->
-        <div id="messages"></div>
-        
-        <!-- Script to utilise the WebSocket -->
-        <script type="text/javascript">
-                        
-            var webSocket;
-            var messages = document.getElementById("messages");
-            
-            
-            function openSocket(){
-                // Ensures only one connection is open at a time
-                if(webSocket !== undefined && webSocket.readyState !== WebSocket.CLOSED){
-                    writeResponse("WebSocket is already opened.");
-                    return;
-                }
-                // Create a new instance of the websocket
-                webSocket = new WebSocket("ws://localhost:8888/websocket");
-                 
-                /**
-                 * Binds functions to the listeners for the websocket.
-                 */
-                webSocket.onopen = function(event){
-                    // For reasons I can't determine, onopen gets called twice
-                    // and the first time event.data is undefined.
-                    // Leave a comment if you know the answer.
-                    if(event.data === undefined) 
-                        return;
+htm = open('resources/websock.htm', 'r').read()
+websockjs = open('resources/websock.js', 'r').read()
 
-                    writeResponse(event.data);
-                };
-
-                webSocket.onmessage = function(event){
-                    writeResponse(event.data);
-                };
-
-                webSocket.onclose = function(event){
-                    writeResponse("Connection closed");
-                };
-            }
-            
-            /**
-             * Sends the value of the text input to the server
-             */
-            function send(){
-                var text = document.getElementById("messageinput").value;
-                webSocket.send(text);
-            }
-            
-            function closeSocket(){
-                webSocket.close();
-            }
-
-            function writeResponse(text){
-                messages.innerHTML = text + "<br/>" + messages.innerHTML;
-            }
-            
-        </script>
-        
-    </body>
-</html>"""
+print "Loaded %s" % htm
 
 class BaseHandler(cyclone.web.RequestHandler):
     @property
@@ -163,8 +86,13 @@ class BaseHandler(cyclone.web.RequestHandler):
 def index(web):
     web.write("Hello, world")
 
+@route("/resources/websock.js")
+def index(web):
+    web.write(websockjs)
+    
 @route("/demo")
 def index(web):
+    print "Returning %s" % htm
     web.write(htm)
 
 from pprint import pprint as pp
@@ -202,14 +130,8 @@ class WebSocketHandler(cyclone.websocket.WebSocketHandler):
 def webSocket(*args, **kwargs):
     print "Woot"
     ret = WebSocketHandler(*args, **kwargs)
-    e.webSocket = ret
+    e.webSockets.append(ret)
     return ret
-
-class XmlrpcHandler(cyclone.xmlrpc.XmlrpcRequestHandler):
-    allowNone = True
-    
-    def xmlrpc_echo(self, text):
-        return text
 
 try:
     raise Exception("COMMENT_THIS_LINE_AND_LOG_TO_DAILY_FILE")
@@ -231,18 +153,17 @@ def getManholeFactory(namespace, passwords):
     
 if __name__ == '__main__':
     e = Echoer()
-    reactor.listenTCP(8789, pb.PBServerFactory(e))
+    reactor.listenTCP(9011, pb.PBServerFactory(e))
     reactor.listenTCP(8790, getManholeFactory(globals(), passwords = { 'andy' : 'pandy' }))
     settings = dict(
         more_handlers=[
             #(r"/websocket", WebSocketHandler),
             (r"/websocket", webSocket),
-            (r"/xmlrpc",    XmlrpcHandler),
+            #(r"/xmlrpc",    XmlrpcHandler),
         ] )
     
     port = 8888
     interface = '0.0.0.0'
     reactor.listenTCP(port, create_app( **settings ), interface=interface)
-    
     reactor.callLater(0, e.pingClients)
     reactor.run()
