@@ -25,12 +25,14 @@ class Client:
         #print "Ping %s" % str(x)
 
     def err(self, *args):
-        print "Err is ", err
+        print "Err is ", str(args)
         del self.e.clients[self.q]
 
 def dorint(s):
     print s
-        
+
+from datetime import datetime
+
 class Echoer(pb.Root):
     def __init__(self):
         self.clients = {}
@@ -39,11 +41,12 @@ class Echoer(pb.Root):
     def pingClients(self):
         print "PingClients"
         for q,v in self.clients.items():
-            print "Pinging %s %s" % (q,v)
+            s =  "%s Pinging %s %s %s" % (datetime.now().isoformat(),q,v, str(self.webSockets))
+            print s
             for ws in self.webSockets:
-                ws.sendMessage("Pinging %s %s" % (q,v))
+                ws.sendMessage(s)
             try:
-                v.ref.callRemote('ping').addCallback( v.ping).addErrback(v.err)
+                v.ref.callRemote('ping' ,s).addCallback( v.ping).addErrback(v.err)
             except pb.DeadReferenceError:
                 traceback.print_exc()
                 print "Killing %s" % q

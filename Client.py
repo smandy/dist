@@ -10,23 +10,28 @@ class Client(pb.Root, pb.Referenceable):
     def __init__(self, name):
         self.name = name
         
-    def remote_ping(self):
-        print "Ping!"
+    def remote_ping(self, *args):
+        #print "Ping!"
         pass
     
 factory = pb.PBClientFactory()
 
 reactor.connectTCP("localhost", 9011, factory)
-
 d = factory.getRootObject()
 
 import sys
 clients = [ Client(x) for x in sys.argv[1:] ]
 
+def success(*args):
+    print "Successs %s" % str(args)
+
+def fail(*args):
+    print "Fail %s" % str(args)
+
 def getConnected(server):
     print "GetConnected"
     for c in clients:
-        server.callRemote( 'register', c.name, c)
+        server.callRemote( 'register', c.name, c).addCallback(success).addErrback(fail)
         
 d.addCallback(getConnected)
 #d.addCallback(lambda s: 'server echoed: '+str(s))
