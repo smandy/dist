@@ -131,7 +131,7 @@ class WebSocketHandler(cyclone.websocket.WebSocketHandler):
         self.connected = False
 
 def webSocket(*args, **kwargs):
-    print "Woot"
+    print "Woot %s %s" % (str(args), str(kwargs))
     ret = WebSocketHandler(*args, **kwargs)
     e.webSockets.append(ret)
     return ret
@@ -161,8 +161,8 @@ if __name__ == '__main__':
     settings = dict(
         more_handlers=[
             #(r"/websocket", WebSocketHandler),
-            (r"/websocket", webSocket),
-            #(r"/xmlrpc",    XmlrpcHandler),
+            (r"/websocket"  , webSocket, e),
+            (r"/static/(.*)", StaticFileHandler, { "path", "static" }),
         ] )
     
     port = 8888
