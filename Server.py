@@ -1,4 +1,3 @@
-
 import sys
 sys.path.insert(0, '/home/andy/repos/cyclone')
 
@@ -20,11 +19,12 @@ from   twisted.spread import pb
 from   twisted.internet import reactor
 from   twisted.python import log
 import traceback
+import json
 
 class Client:
-    def __init__(self, e, q, ref):
+    def __init__(self, e, name, ref):
         self.e = e
-        self.q = q
+        self.name = name
         self.ref = ref
 
     def ping(self,x):
@@ -33,7 +33,7 @@ class Client:
 
     def err(self, *args):
         print "Err is ", str(args)
-        del self.e.clients[self.q]
+        del self.e.clients[self.name]
 
 def dorint(s):
     print s
@@ -53,12 +53,19 @@ class Echoer(pb.Root):
         
     def pingClients(self):
         print "PingClients"
+        for ws in self.webSockets:
+            x = ws.sendMessage( json.dumps(
+                {
+                    "type" : "serverInfo" ,
+                    "peers"   : [ x.name for x in self.clients.values() ],
+                    "clients" : [ x.id for x in self.webSockets],
+                    "time"    : datetime.now().isoformat()
+                }
+            ))
+            #print "Retval is %s" % x
         for q,v in self.clients.items():
             s =  "%s Pinging %s %s %s" % (datetime.now().isoformat(),q,v, str(self.webSockets))
             print s
-            for ws in self.webSockets:
-                x = ws.sendMessage(s) #.addCallback( self.wsSuccess, ws).addErrback( self.wsFailed, ws)
-                print "Retval is %s" % x
             try:
                 v.ref.callRemote('ping' ,s).addCallback( v.ping).addErrback(v.err)
             except pb.DeadReferenceError:
@@ -78,8 +85,7 @@ class Echoer(pb.Root):
         x = ref.callRemote('beep', "Woot")
         def beep(x):
             print "Echo ", x
-
-        x.addCallback( beep)
+        x.addCallback( beep )
         return (st, self)
     
 # TODO - something like this.
@@ -102,32 +108,57 @@ def addJob(web, *args, **kwargs):
     web.write('Ok')
 
 from pprint import pprint as pp
-import json
     
 class WebSocketHandler(cyclone.websocket.WebSocketHandler):
+    def onLogonRequest(self, j):
+        self.id = j['id']
+        self.server.webSockets.append(self)
+        self.dispatchMap = self.normalDispatch
+        print "Accepted logon for client %s" % self.id
+    
     def initialize(self, server):
+        print "Start initialise"
+        self.awaitingLogon  = { "logon" : self.onLogonRequest }
+        self.normalDispatch = { }
         print "In initialize"
         self.connected = False
+        self.id = None
+        self.dispatch = self.awaitingLogon
+        self.server = server
+        print "End initialise"
         
     def connectionMade(self, *args, **kwargs):
         print "connection made:", args, kwargs
         self.connected = True
 
     def messageReceived(self, message):
-        self.sendMessage("echo: %s" % message)
-
-    def doSend(self, x):
-        if self.connected:
-            self.sendMessage(x)
+        print "Received %s" % message
+        try:
+            xs = json.loads(message)
+            thaip = xs['type']
+            if self.dispatch.has_key(thaip):
+                self.dispatch[thaip](xs)
+            else:
+                print "Danger out of bound type %s\n%s" % (thaip, xs)
+        except:
+            print "Expunge server"
+            if self in self.server.webSockets:
+                self.server.webSockets.remove(self)
+            
+    # def doSend(self, x):
+    #     if self.connected:
+    #         self.sendMessage(x)
 
     def connectionLost(self, why):
         print "connection lost:", why
         self.connected = False
+        if self in self.server.webSockets:
+            print "Deregistering from server"
+            self.server.webSockets.remove(self) # TODO - method on server?
 
 def webSocket(*args, **kwargs):
     print "Woot %s %s" % (str(args), str(kwargs))
     ret = WebSocketHandler(*args, **kwargs)
-    e.webSockets.append(ret)
     return ret
 
 try:
